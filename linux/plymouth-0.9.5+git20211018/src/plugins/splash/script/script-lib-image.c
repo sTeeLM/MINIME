@@ -37,6 +37,9 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/types.h>
+#include <sys/stat.h>
+#include <unistd.h>
 
 #include "script-lib-image.script.h"
 
@@ -180,8 +183,53 @@ static script_return_t image_tile (script_state_t *state,
         return script_return_obj_null ();
 }
 
-static script_return_t image_text (script_state_t *state,
-                                   void           *user_data)
+static char * ply_read_from_file(const char * file_path)
+{
+  struct stat st;
+  FILE * f = NULL;
+  char * buffer = NULL;
+  int success = 0;  
+ 
+  if(lstat(file_path, &st) != 0) {
+    ply_error("py_read_from_file: %s lstat error", file_path);
+    goto error;
+  }
+
+  if((f = fopen(file_path, "r")) == NULL) {
+    ply_error("py_read_from_file: %s fopen error", file_path);
+    goto error;
+  }
+
+  if((buffer = malloc(st.st_size + 1)) == NULL) {
+    ply_error("py_read_from_file: %s malloc %d error", file_path, st.st_size + 1);
+    goto error;
+  }
+
+  if(fread(buffer, st.st_size, 1, f) != 1) {
+    ply_error("py_read_from_file: %s fread error", file_path);
+    goto error;
+  }
+
+  buffer[st.st_size] = 0;
+
+  success = 1;
+
+error:
+  if(NULL != f) {
+    fclose(f);
+    f = NULL;
+  }
+  if(NULL != buffer && success != 1) {
+    free(buffer);
+    buffer = NULL;
+  }
+  return buffer;
+}
+
+
+static script_return_t show_image_text (script_state_t *state,
+                                   void           *user_data,
+                                   int            from_file)
 {
         script_lib_image_data_t *data = user_data;
         ply_pixel_buffer_t *image;
@@ -190,6 +238,7 @@ static script_return_t image_text (script_state_t *state,
         int width, height;
         int align = PLY_LABEL_ALIGN_LEFT;
         char *font;
+        char *text_save = NULL;
 
         char *text = script_obj_hash_get_string (state->local, "text");
 
@@ -239,6 +288,16 @@ static script_return_t image_text (script_state_t *state,
                 return script_return_obj_null ();
         }
 
+        if(from_file) {
+                text_save = ply_read_from_file(text);
+                free(text);
+                text = text_save;
+                if (!text) {
+                    free (font);
+                    return script_return_obj_null ();
+                }
+        }
+
         label = ply_label_new ();
         ply_label_set_text (label, text);
         if (font)
@@ -258,6 +317,18 @@ static script_return_t image_text (script_state_t *state,
         ply_label_free (label);
 
         return script_return_obj (script_obj_new_native (image, data->class));
+}
+
+static script_return_t image_text_from_file (script_state_t *state,
+                                   void           *user_data)
+{
+       return show_image_text(state, user_data, 1); 
+}
+
+static script_return_t image_text (script_state_t *state,
+                                   void           *user_data)
+{
+       return show_image_text(state, user_data, 0);
 }
 
 script_lib_image_data_t *script_lib_image_setup (script_state_t *state,
@@ -318,6 +389,18 @@ script_lib_image_data_t *script_lib_image_setup (script_state_t *state,
         script_add_native_function (image_hash,
                                     "_Text",
                                     image_text,
+                                    data,
+                                    "text",
+                                    "red",
+                                    "green",
+                                    "blue",
+                                    "alpha",
+                                    "font",
+                                    "align",
+                                    NULL);
+         script_add_native_function (image_hash,
+                                    "_TextFromFile",
+                                    image_text_from_file,
                                     data,
                                     "text",
                                     "red",

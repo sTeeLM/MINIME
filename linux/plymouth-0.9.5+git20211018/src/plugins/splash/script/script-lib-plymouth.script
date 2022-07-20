@@ -1,6 +1,6 @@
 #------------------------- Compatability Functions -------------------------
 Plymouth.SetMessageFunction = Plymouth.SetDisplayMessageFunction;
-
+PlymouthSetBootMessageFunction = Plymouth.SetBootMessageFunction;
 PlymouthSetRefreshFunction = Plymouth.SetRefreshFunction;
 PlymouthSetBootProgressFunction = Plymouth.SetBootProgressFunction;
 PlymouthSetRootMountedFunction = Plymouth.SetRootMountedFunction;

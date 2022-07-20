@@ -108,10 +108,17 @@ script_lib_plymouth_data_t *script_lib_plymouth_setup (script_state_t        *st
         data->script_hide_message_func = script_obj_new_null ();
         data->script_quit_func = script_obj_new_null ();
         data->script_system_update_func = script_obj_new_null ();
+        data->script_boot_message_func = script_obj_new_null ();
         data->mode = mode;
         data->refresh_rate = refresh_rate;
 
         script_obj_t *plymouth_hash = script_obj_hash_get_element (state->global, "Plymouth");
+        script_add_native_function (plymouth_hash,
+                              "SetBootMessageFunction",
+                              plymouth_set_function,
+                              &data->script_boot_message_func,
+                              "function",
+                              NULL);
         script_add_native_function (plymouth_hash,
                                     "SetRefreshFunction",
                                     plymouth_set_function,
@@ -395,4 +402,18 @@ void script_lib_plymouth_on_quit (script_state_t             *state,
                                                      NULL);
 
         script_obj_unref (ret.object);
+}
+
+void script_lib_plymouth_on_display_boot_message (script_state_t             *state,
+                                             script_lib_plymouth_data_t *data,
+                                             const char                 *boot_message)
+{
+  script_obj_t *boot_message_obj = script_obj_new_string (boot_message);
+  script_return_t ret = script_execute_object (state,
+                                               data->script_boot_message_func,
+                                               NULL,
+                                               boot_message_obj,
+                                               NULL);
+  script_obj_unref (boot_message_obj);
+  script_obj_unref (ret.object);
 }

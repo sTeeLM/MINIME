@@ -40,6 +40,7 @@
 #include <values.h>
 #include <unistd.h>
 #include <wchar.h>
+#include <regex.h>
 
 #include "ply-boot-splash-plugin.h"
 #include "ply-buffer.h"
@@ -531,6 +532,81 @@ hide_message (ply_boot_splash_plugin_t *plugin,
         unpause_displays (plugin);
 }
 
+static size_t
+clear_escape(char * src, size_t src_len, char * dst, size_t dst_len)
+{  
+    regmatch_t pmatch[2];
+    regex_t reg;
+    size_t p_len = 0, q_len = 0;
+    char * p, * q;
+
+    p = src;
+    q = dst;
+
+    if(regcomp(&reg,"^((\x1b\\[[0-9;]*m)|(\x1b\\[K))", REG_EXTENDED) != 0) {
+        return 0;
+    }
+    
+    while(p_len < src_len && q_len < dst_len) {
+        if(*p == '\x2e' || *p == '\r' || *p == '\n') {
+            p++;
+            p_len ++;
+        } else {
+            if(regexec(&reg, p, 2, pmatch, 0) == 0 && pmatch[1].rm_so == 0) {
+                p += pmatch[1].rm_eo;
+                p_len += pmatch[1].rm_eo;
+            } else {
+                *q = *p;
+                p++;
+                q++;
+                p_len ++;
+                q_len ++;
+            }
+        }
+    }
+
+    regfree(&reg);
+    return q_len;
+}
+
+static char   buffer[1024];
+static size_t buffer_index = 0;
+
+static void
+boot_output (ply_boot_splash_plugin_t *plugin,
+                const char *msg, size_t size)
+{
+  const char * p = msg;
+  char buf[1024];
+  size_t buf_len = 0;
+
+  pause_displays (plugin);
+  while((p - msg) < size) {
+    if(*p != '\r' && *p != '\n') {
+      /* append to buffer if has enough size */
+      if(buffer_index < sizeof(buffer) - 1) {
+        buffer[buffer_index] = *p;
+        buffer_index ++;
+      }
+    } else {
+      if(buffer_index != 0) {
+        buffer[buffer_index] = 0;
+        buf_len = clear_escape(buffer, buffer_index, buf, sizeof(buf) - 1);
+        buf[buf_len] = 0;
+        if(buf_len > 0) {
+          script_lib_plymouth_on_display_boot_message (plugin->script_state,
+                                               plugin->script_plymouth_lib,
+                                               buf);
+        }
+        buffer_index = 0;
+      }
+    }
+    p ++;
+  }
+  unpause_displays (plugin);
+}
+
+
 ply_boot_splash_plugin_interface_t *
 ply_boot_splash_plugin_get_interface (void)
 {
@@ -554,6 +630,7 @@ ply_boot_splash_plugin_get_interface (void)
                 .display_question     = display_question,
                 .display_message      = display_message,
                 .hide_message         = hide_message,
+                .on_boot_output       = boot_output,
         };
 
         return &plugin_interface;
